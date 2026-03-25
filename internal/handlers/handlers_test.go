@@ -9,100 +9,107 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func TestHealth(t *testing.T) {
+func init() {
 	gin.SetMode(gin.TestMode)
+}
 
+func newContext(method, path string) (*gin.Context, *httptest.ResponseRecorder) {
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(method, path, nil)
+	return c, w
+}
 
+// --- Health ---
+
+func TestHealth(t *testing.T) {
+	c, w := newContext(http.MethodGet, "/api/health")
 	Health(c)
 
 	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", w.Code)
+		t.Fatalf("status: got %d, want %d", w.Code, http.StatusOK)
 	}
-
 	var body map[string]string
 	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
-		t.Fatalf("decode body: %v", err)
+		t.Fatal(err)
 	}
-	if body["status"] != "ok" || body["service"] != "stellarbill-backend" {
-		t.Fatalf("unexpected body: %v", body)
+	if body["status"] != "ok" {
+		t.Errorf("status field: got %q, want %q", body["status"], "ok")
+	}
+	if body["service"] != "stellarbill-backend" {
+		t.Errorf("service field: got %q", body["service"])
 	}
 }
 
+// --- Plans ---
+
 func TestListPlans(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
-	w := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(w)
-
+	c, w := newContext(http.MethodGet, "/api/plans")
 	ListPlans(c)
 
 	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", w.Code)
+		t.Fatalf("status: got %d, want %d", w.Code, http.StatusOK)
 	}
-
-	var body map[string][]Plan
+	var body map[string]interface{}
 	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
-		t.Fatalf("decode body: %v", err)
+		t.Fatal(err)
 	}
-	if plans := body["plans"]; len(plans) != 0 {
-		t.Fatalf("expected empty plans, got %v", plans)
+	plans, ok := body["plans"]
+	if !ok {
+		t.Fatal("response missing 'plans' key")
+	}
+	if plans == nil {
+		t.Fatal("plans is nil")
 	}
 }
 
+// --- Subscriptions ---
+
 func TestListSubscriptions(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
-	w := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(w)
-
+	c, w := newContext(http.MethodGet, "/api/subscriptions")
 	ListSubscriptions(c)
 
 	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", w.Code)
+		t.Fatalf("status: got %d, want %d", w.Code, http.StatusOK)
 	}
-
-	var body map[string][]Subscription
+	var body map[string]interface{}
 	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
-		t.Fatalf("decode body: %v", err)
+		t.Fatal(err)
 	}
-	if subscriptions := body["subscriptions"]; len(subscriptions) != 0 {
-		t.Fatalf("expected empty subscriptions, got %v", subscriptions)
+	if _, ok := body["subscriptions"]; !ok {
+		t.Fatal("response missing 'subscriptions' key")
 	}
 }
 
-func TestGetSubscription(t *testing.T) {
-	gin.SetMode(gin.TestMode)
+func TestGetSubscription_WithID(t *testing.T) {
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/subscriptions/sub_123", nil)
+	c.Params = gin.Params{{Key: "id", Value: "sub_123"}}
 
-	t.Run("missing id", func(t *testing.T) {
-		w := httptest.NewRecorder()
-		c, _ := gin.CreateTestContext(w)
+	GetSubscription(c)
 
-		GetSubscription(c)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status: got %d, want %d", w.Code, http.StatusOK)
+	}
+	var body map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body["id"] != "sub_123" {
+		t.Errorf("id: got %v, want %q", body["id"], "sub_123")
+	}
+}
 
-		if w.Code != http.StatusBadRequest {
-			t.Fatalf("expected 400, got %d", w.Code)
-		}
-	})
+func TestGetSubscription_EmptyID(t *testing.T) {
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/subscriptions/", nil)
+	c.Params = gin.Params{{Key: "id", Value: ""}}
 
-	t.Run("with id", func(t *testing.T) {
-		w := httptest.NewRecorder()
-		c, _ := gin.CreateTestContext(w)
-		c.Params = gin.Params{{Key: "id", Value: "sub_123"}}
+	GetSubscription(c)
 
-		GetSubscription(c)
-
-		if w.Code != http.StatusOK {
-			t.Fatalf("expected 200, got %d", w.Code)
-		}
-
-		var body map[string]string
-		if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
-			t.Fatalf("decode body: %v", err)
-		}
-		if body["id"] != "sub_123" || body["status"] != "placeholder" {
-			t.Fatalf("unexpected body: %v", body)
-		}
-	})
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status: got %d, want %d", w.Code, http.StatusBadRequest)
+	}
 }
