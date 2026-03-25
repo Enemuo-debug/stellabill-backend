@@ -59,4 +59,6 @@ func Register(r *gin.Engine) {
 		api.GET("/subscriptions/:id", middleware.AuthMiddleware(jwtSecret), handlers.NewGetSubscriptionHandler(svc))
 		api.GET("/plans", handlers.ListPlans)
 	}
+
+	return nil
 }

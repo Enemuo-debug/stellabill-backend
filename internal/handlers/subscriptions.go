@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -29,7 +31,7 @@ func (h *Handler) ListSubscriptions(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"subscriptions": subscriptions})
 }
 
-func GetSubscription(c *gin.Context) {
+func (h *Handler) GetSubscription(c *gin.Context) {
 	id := c.Param("id")
 	c.JSON(http.StatusOK, Subscription{
 		ID:       id,
