@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"stellabill-backend/internal/subscriptions"
 
 	"stellarbill-backend/internal/service"
 )
@@ -85,4 +86,39 @@ func NewGetSubscriptionHandler(svc service.SubscriptionService) gin.HandlerFunc 
 		}
 		c.JSON(http.StatusOK, envelope)
 	}
+}
+
+// UpdateSubscriptionStatus handles status updates with validation
+func UpdateSubscriptionStatus(c *gin.Context) {
+	id := c.Param("id")
+	if id == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "subscription id required"})
+		return
+	}
+
+	var payload struct {
+		Status string `json:"status" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// TODO: fetch current subscription from DB
+	currentStatus := "active" // placeholder
+
+	if err := subscriptions.CanTransition(currentStatus, payload.Status); err != nil {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	// TODO: persist update
+
+	c.JSON(http.StatusOK, gin.H{
+		"id":     id,
+		"status": payload.Status,
+	})
 }
