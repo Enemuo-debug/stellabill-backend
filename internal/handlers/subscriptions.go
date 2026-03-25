@@ -2,17 +2,19 @@ package handlers
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
+	"stellarbill-backend/internal/service"
 )
 
 type Subscription struct {
-	ID        string `json:"id"`
-	PlanID    string `json:"plan_id"`
-	Customer  string `json:"customer"`
-	Status    string `json:"status"`
-	Amount    string `json:"amount"`
-	Interval  string `json:"interval"`
+	ID          string `json:"id"`
+	PlanID      string `json:"plan_id"`
+	Customer    string `json:"customer"`
+	Status      string `json:"status"`
+	Amount      string `json:"amount"`
+	Interval    string `json:"interval"`
 	NextBilling string `json:"next_billing,omitempty"`
 }
 
@@ -26,22 +28,47 @@ func (h *Handler) ListSubscriptions(c *gin.Context) {
 }
 
 func (h *Handler) GetSubscription(c *gin.Context) {
+	// 1. Read callerID from context (set by AuthMiddleware).
+	callerID, exists := c.Get("callerID")
+	if !exists {
+		c.Header("Content-Type", "application/json; charset=utf-8")
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	// 2. Validate :id path param.
 	id := c.Param("id")
-	if id == "" {
+	if strings.TrimSpace(id) == "" {
+		c.Header("Content-Type", "application/json; charset=utf-8")
 		c.JSON(http.StatusBadRequest, gin.H{"error": "subscription id required"})
 		return
 	}
 
-	sub, err := h.Subscriptions.GetSubscription(c, id)
+	// 3. Call service.
+	detail, warnings, err := h.Subscriptions.GetDetail(c.Request.Context(), callerID.(string), id)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.Header("Content-Type", "application/json; charset=utf-8")
+		switch err {
+		case service.ErrNotFound:
+			c.JSON(http.StatusNotFound, gin.H{"error": "subscription not found"})
+		case service.ErrDeleted:
+			c.JSON(http.StatusGone, gin.H{"error": "subscription has been deleted"})
+		case service.ErrForbidden:
+			c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+		case service.ErrBillingParse:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		default:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		}
 		return
 	}
 
-	if sub == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "subscription not found"})
-		return
+	// 4. Set Content-Type and respond with envelope.
+	c.Header("Content-Type", "application/json; charset=utf-8")
+	envelope := service.ResponseEnvelope{
+		APIVersion: "1",
+		Data:       detail,
+		Warnings:   warnings,
 	}
-
-	c.JSON(http.StatusOK, sub)
+	c.JSON(http.StatusOK, envelope)
 }
